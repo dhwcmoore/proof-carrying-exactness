@@ -1,0 +1,54 @@
+Proof-Carrying Exactness
+========================
+
+This repository is licensed under the GNU Affero General Public
+License v3.0 or later (AGPL-3.0-or-later). See the `LICENSE` file for
+the complete licence text.
+
+Upstream provenance
+--------------------
+
+This repository was seeded from a snapshot of:
+
+    dhwcmoore/regional-obstruction-calculus
+    commit a9d68c34dbed7546d1cfb4e797d72e3af4c73278
+
+That repository's copyright holder, per its own `CITATION.cff` and
+README sign-off, is:
+
+    Duston Moore
+    Independent Researcher
+
+The inherited proof/certificate infrastructure (`rocq/`, `ocaml/`, the
+R1-R24 diagnostic and refinement-witness Python modules, the R21
+exact-rational repair-or-separator certificate pipeline, and the
+tracking-adapter/Stone-Soup applied layer, along with their tests,
+examples, and design documents) was imported as reference material,
+unmodified, at the commit above. See `docs/UPSTREAM_PROVENANCE.md` for
+the exact list of inherited paths and what was and was not carried
+over.
+
+This repository has its own, independent git history -- it does not
+share commits with `dhwcmoore/regional-obstruction-calculus`. The seed
+commit containing the import is `75661d6` in this repository's own
+history.
+
+Third-party dependencies
+-------------------------
+
+This repository names, but does not vendor, several third-party
+dependencies:
+
+- OCaml: `zarith` (GMP-backed exact rationals), `yojson` (JSON
+  parsing), `sha` (SHA-256) -- installed via system packages
+  (`libzarith-ocaml-dev`, `libyojson-ocaml-dev`, `libsha-ocaml-dev`),
+  never copied into this repository as source.
+- Python: Stone Soup (`stonesoup`, pinned only in the optional
+  `requirements-stonesoup.txt`, MIT-licensed) -- an installed pip
+  dependency, never vendored. See `docs/STONESOUP_THIRD_PARTY_NOTICE.md`
+  for its own third-party licence/copyright notice, inherited unchanged
+  from the upstream repository.
+
+No other vendored or copied third-party source was found during the
+2026-07-22 authorship/licensing audit that produced this file (see
+`docs/UPSTREAM_PROVENANCE.md`).
