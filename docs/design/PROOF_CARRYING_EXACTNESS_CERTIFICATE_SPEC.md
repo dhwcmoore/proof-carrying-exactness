@@ -39,7 +39,7 @@ The certificate generator may perform expensive discovery:
 - find factorisations;
 - search provenance graphs;
 - construct separators;
-- construct a component labelling proving non-connectivity.
+- construct reachability cuts proving non-reachability (SS10).
 
 The verifier must not repeat discovery. It checks a supplied witness
 using local, exact operations.
@@ -104,19 +104,36 @@ instance, and the witness, in that order, before any arithmetic runs):
 
 ## 4. Digest model
 
+**Revised (hardening pass, 2026-07-22).** An earlier draft of this
+section recommended folding `provenance` into `policy_digest`. That
+recommendation was ITSELF wrong, corrected before any production code
+was written from it: provenance is a fact about the evidence instance
+(it describes what evidence exists and how it is related), while
+policy determines how that provenance is JUDGED (which pairs must be
+independent, under which rule). The same policy should be reusable
+across many different evidence packages; folding provenance into the
+policy digest would mean changing the evidence (e.g. adding one more
+provenance edge) silently produces what LOOKS LIKE a new policy, which
+is the wrong entity to blame for the change. The corrected boundary,
+now implemented and verified in `spike_certificates/`:
+
 ### Input digest
 
-Binds everything constitutive of the algebraic instance and attempted
-claim:
+Binds everything constitutive of the evidence instance -- both
+algebraic and evidentiary:
 
-- `D`;
-- `r`;
-- `L`, when relevant (`null` for `OBSTRUCTED`, where no claim map
-  enters the mathematical obstruction test at all -- see SS8);
-- evidence identifiers and evidence-to-row alignment (`row_evidence_
-  ids`);
-- attempted-claim metadata (a descriptive label, still digest-bound so
-  it cannot be swapped post hoc even though it is never checked
+- `D`, `r` (rendered as an explicit `"D:absent"`/`"r:absent"` marker,
+  not silently omitted, for `INADMISSIBLE`, which forbids them
+  entirely -- SS11);
+- `L`, when present (forbidden, not merely absent, for `OBSTRUCTED`/
+  `INADMISSIBLE` -- SS8, SS9);
+- the provenance graph: vertices AND edges (`provenance.vertices`,
+  `provenance.edges`), sorted before hashing for a canonical, order-
+  independent serialisation;
+- evidence-to-row alignment (`row_evidence_ids`);
+- claim metadata (`claim_metadata`, optional, `OBSTRUCTED`-only in the
+  current schema -- a descriptive label, still digest-bound so it
+  cannot be swapped post hoc even though it is never checked
   mathematically);
 - transformation metadata used by the assessment, when a future
   revision of this project's evidence model introduces declared
@@ -124,75 +141,63 @@ claim:
   flagged here so the digest model does not need revisiting when that
   happens).
 
-Claimed value `x` is deliberately NOT part of the input digest: it is
-part of the WITNESS (a claim the certificate makes and the verifier
-checks), not part of the evidence boundary the input digest fixes. The
-spike's own `compute_instance_digest(D, r, L)` matches this: it never
-reads `x`.
+Claimed value `x` remains part of the WITNESS, not the input digest --
+it is a claim the certificate makes and the verifier checks against
+the instance, not part of the evidence boundary the instance itself
+fixes. Confirmed by inspection: `certificate_types.compute_input_
+digest`'s own signature (`D, r, L, provenance, row_evidence_ids,
+claim_metadata`) never takes `x` as an argument.
 
 ### Policy digest
 
-Binds:
+Binds ONLY the judgement rules, reusable across many evidence
+packages:
 
 - rule identifiers (`SUPPORTED_RULE_IDS`, currently one member,
   `independent_rows_no_ancestry_relation` -- see SS9);
 - independent-row declarations (`policy.independent_pairs`);
-- the provenance graph (`provenance.edges`) -- committed at digest
-  time, so a supplied ancestry path or component labelling is checked
-  against a FIXED graph, never one the generator could quietly
-  substitute after the fact;
-- transformation admissibility rules, when they exist (not yet present
-  in the spike -- flagged for the same reason as above);
-- policy version (a `policy_version` string field, matching `tracking_
-  adapter_provenance.py`'s existing convention, e.g.
-  `"tracking-adapter-independence-policy/v1"` -- the spike's own
-  `policy` dict did not include one; the production schema should add
-  it, since a policy is exactly the kind of object whose OWN evolution
-  needs a version tag independent of the certificate envelope's);
+- policy version (`policy.policy_version`, matching `tracking_adapter_
+  provenance.py`'s existing convention, e.g.
+  `"tracking-adapter-independence-policy/v1"`-shaped strings -- now a
+  required field, confirmed present in every one of the spike's five
+  case files);
 - any rule parameters (none exist for the one currently supported
   rule, which takes no parameters beyond the pair itself).
 
-No verifier-consumed field may sit outside the appropriate digest
-boundary -- concretely: `provenance` and `policy` (both consumed by
-`_verify_admissibility_labelling` and `_verify_inadmissible`) must be
-covered by `policy_digest`, not `input_digest`; `D`, `r`, `L` must be
-covered by `input_digest`, not `policy_digest`. The spike currently
-computes `policy_digest` from `instance.get("policy") or {}` ALONE,
-NOT `provenance` -- this is a genuine gap this document corrects: the
-provenance graph is exactly as security-critical as the policy that
-interprets it (a generator that could silently swap `provenance.edges`
-after computing `policy_digest` could fabricate or erase an ancestry
-relation without invalidating anything), so the production `policy_
-digest` must bind BOTH `policy` and `provenance` together, not `policy`
-alone. This is a specification correction found by auditing the spike
-against this document's own SS4 requirement, not a spike defect that
-was silently accepted.
+**The provenance graph is deliberately NOT part of `policy_digest`.**
+Confirmed directly: `compute_policy_digest` takes only a `policy` dict
+and never reads `provenance` at all; `compute_input_digest` is the one
+function that reads `provenance`. A dedicated test (`spike_
+certificates/pce_certificate_spike.py`'s "provenance-edge mutation
+after digest creation is caught by input_digest" case) confirms
+mutating `instance.provenance.edges` after certificate construction is
+caught -- by `input_digest`, specifically, not `policy_digest`.
 
 ### Domain separation
 
-Use explicit domain-separated prefixes before hashing, so the same
-byte sequence can never be confused across digest domains:
+Both digest functions prepend an explicit domain tag before hashing,
+so the same canonical bytes can never be confused across digest
+domains:
 
-    pce-input-v1 || canonical_input_bytes
-    pce-policy-v1 || canonical_policy_and_provenance_bytes
+    pce-input-v1  || canonical_input_bytes
+    pce-policy-v1 || canonical_policy_bytes
 
-The spike's `compute_instance_digest`/`compute_policy_digest` do NOT
-yet prefix their canonical bytes this way (they reuse `canonical_
-input_digest`'s own line-based canonical form, and a bare `json.dumps`
-respectively) -- this is a second specification correction beyond what
-the spike checked: the production digest functions must prepend a
-domain tag before hashing, closing the (currently only theoretical, not
-demonstrated) risk that an `input`-shaped byte string and a `policy`-
-shaped byte string could collide or be swapped between the two digest
-fields.
+Implemented and verified directly: a dedicated spike test hashes the
+SAME literal payload string under both domain prefixes and confirms
+the two resulting digests differ, and the "swapped input_digest and
+policy_digest values" tamper test confirms a certificate with its two
+digest fields exchanged is rejected (both digests are independently
+recomputed and compared against the correct field, so a swap is caught
+regardless of domain separation in that specific case -- but domain
+separation is what guarantees no ACCIDENTAL collision could ever make
+a swap, or a genuinely different canonical payload, verify by chance).
 
 Rational and matrix encoding is reused from R21 outright (`parse_
 rational`, `parse_vector`, `parse_matrix`, and `canonical_input_
-digest`'s own canonical line format for `D`/`r`); the one genuine
-extension is `L`'s own canonical serialisation (never part of `roc-
-input/v1`), plus, per the corrections above, folding `provenance` into
-the policy digest and adding domain-separation prefixes to both digest
-functions.
+digest`'s own canonical line format for `D`/`r`); the two genuine
+extensions are `L`'s own canonical serialisation (never part of `roc-
+input/v1`) and the provenance/row-evidence/claim-metadata
+canonicalisation this document's own corrected boundary requires.
 
 ## 5. Rational and matrix representation
 
@@ -281,10 +286,10 @@ Given `D` in `Q^(m x n)` and `L` in `Q^(p x n)`:
 ### Admissibility binding
 
 Per SS14, `EXACT` additionally requires `admissibility_witness` (SS10)
-and its two checks (edge-consistency, independent-pair label
-separation) to pass BEFORE the three equalities above are even
-evaluated -- confirmed directly in the spike (`_verify_exact` calls
-`_verify_admissibility_labelling` first and returns early on failure).
+and its reachability-cut checks to pass BEFORE the three equalities
+above are even evaluated -- confirmed directly in the spike
+(`_verify_exact` calls `_verify_admissibility_cuts` first and returns
+early on failure).
 
 ## 7. UNDERDETERMINED
 
@@ -425,10 +430,11 @@ spike's own `verifier._verify_inadmissible`):
 4. `ancestry_path`'s two endpoints match `left_evidence`/`right_
    evidence`, ordered according to the declared `direction`;
 5. every consecutive pair `(path[i], path[i+1])` exists in the
-   committed, DIRECTED provenance graph (`policy_digest`-bound) in
-   EXACTLY that order -- not reversed, since a directed
-   `[descendant, ancestor]` edge does not license traversing it
-   backwards as evidence of the opposite ancestry relation;
+   committed, DIRECTED provenance graph (`input_digest`-bound, per
+   SS4's corrected boundary) in EXACTLY that order -- not reversed,
+   since a directed `[descendant, ancestor]` edge does not license
+   traversing it backwards as evidence of the opposite ancestry
+   relation;
 6. the policy (also `policy_digest`-bound) declares `{left_evidence,
    right_evidence}` as a pair required to be independent.
 
@@ -454,36 +460,97 @@ its own spike, exactly as this one rule was.
 
 ## 10. Admissibility witness for the algebraic verdicts
 
-Per SS14, `EXACT`/`UNDERDETERMINED`/`OBSTRUCTED` each additionally
-require an `admissibility_witness`:
+**Revised (hardening pass, 2026-07-22).** An earlier draft of this
+section specified a component-labelling witness. That witness was
+SOUND -- a certified pair could never actually share an ancestry
+relation -- but INCOMPLETE: it proves the two evidence items lie in
+different WEAKLY connected components, which is strictly stronger than
+"no directed path connects them either way". Counterexample, found
+before any production code was written from the earlier draft:
 
-    { "component_labels": { <evidence_id>: <label>, ... } }
+    a <- c -> b
 
-### Required checks
+There is no directed path `a ⇝ b` or `b ⇝ a` -- `independent_rows_no_
+ancestry_relation` should ACCEPT this pair as admissible -- but `a` and
+`b` share one weakly connected component (via `c`), so a labelling
+witness could never certify it, wrongly forcing `INADMISSIBLE` (or no
+verdict at all) on a genuinely admissible instance. This is a real
+completeness gap, not a hypothetical one: the initial ancestry rule is
+supposed to classify every finite rational instance, and a common-
+ancestor shape is an ordinary, unremarkable provenance pattern (e.g.
+two sensor readings both calibrated from one shared reference
+measurement, without either reading being derived from the other).
 
-1. every committed provenance edge `[a, b]` connects two IDENTICALLY-
-   labelled nodes (`labels[a] == labels[b]`);
-2. every policy-declared independent pair `[left, right]` carries
-   DIFFERENT labels (`labels[left] != labels[right]`).
+### Reachability-cut witness
 
-By induction over check 1 (an edge always connects equal labels), any
-two nodes connected by SOME path of committed edges, in either
-direction, necessarily share a label; therefore two DIFFERENTLY
-labelled nodes cannot be connected by any path at all -- check 2 is
-therefore a genuine, checkable proof of non-connectivity, and hence of
-admissibility for that pair, WITHOUT the verifier ever traversing the
-graph itself. The generator constructs the labelling via its own
-union-find search (`pce_certificate_spike.compute_component_labels`,
-confirmed to reuse no verifier-side code); the verifier only checks
-label-consistency, locally, edge by edge and pair by pair.
+Per `EXACT`/`UNDERDETERMINED`/`OBSTRUCTED`, `admissibility_witness` now
+carries, for every policy-declared independent pair `(left, right)`, a
+PAIR of cuts:
+
+    {
+      "cuts": [
+        {
+          "pair": [left, right],
+          "left_not_reaches_right": [<vertex>, ...],
+          "right_not_reaches_left": [<vertex>, ...]
+        },
+        ...
+      ]
+    }
+
+A cut `S` proving `left` cannot reach `right` must satisfy:
+
+    left in S
+    right not in S
+    forall (u, v) in edges: u in S implies v in S      (forward closure)
+
+If such an `S` exists, no directed path can ever leave `S`, so no
+directed path from `left` reaches `right` -- and this is COMPLETE, not
+merely sound: whenever `right` really is unreachable from `left`, the
+generator can always choose `S` to be exactly the set of vertices
+reachable from `left` (which is, by construction, forward-closed, and
+excludes `right` precisely because `right` is unreachable). Symmetric
+for `right_not_reaches_left`. On the counterexample above: reachable-
+from-`a` is `{a}` (no outgoing edges), reachable-from-`b` is `{b}` --
+both valid, minimal cuts, confirmed directly in the spike (`cases/
+exact_common_ancestor.json`, `EXACT (common ancestor a<-c->b, no
+ancestry relation): accepted`).
+
+### Required checks (per cut, no search)
+
+1. no duplicate vertex identifiers within the supplied set;
+2. every supplied vertex identifier is a known provenance vertex
+   (`provenance.vertices`);
+3. the set contains the required "reaches-from" endpoint;
+4. the set excludes the opposite endpoint;
+5. forward closure: for every committed edge `(u, v)`, if `u` is in the
+   set, `v` must be too.
+
+All five are local: membership tests and one pass over the committed
+edge list, exactly the same non-search discipline as every other
+verifier-side check in this document. Confirmed directly by the
+spike's own tamper battery: a direct edge `a -> b` and a longer path
+`a -> c -> b` both defeat a falsely claimed cut (closure fails at the
+first edge that would force the excluded endpoint into the set); a cut
+omitting the required vertex itself is rejected (check 3); a cut
+improperly including the excluded endpoint is rejected (check 4).
 
 This mechanism and `INADMISSIBLE`'s own explicit-path witness (SS9) are
 the positive and negative sides of the SAME underlying connectivity
-fact, verified via two DIFFERENT, independently checkable witness
-shapes -- deliberately not unified into one mechanism, since a positive
-non-connectivity proof (a labelling) and a negative connectivity proof
-(a path) have genuinely different verification shapes, and conflating
-them would make either check harder to audit in isolation.
+fact (reachability, not weak connectivity), verified via two DIFFERENT,
+independently checkable witness shapes -- deliberately not unified into
+one mechanism, since a positive non-reachability proof (a cut) and a
+negative reachability proof (a path) have genuinely different
+verification shapes, and conflating them would make either check
+harder to audit in isolation.
+
+The (now superseded) component-labelling witness MAY still be offered
+as an OPTIONAL, additional, stronger certificate in a future revision
+(it proves something strictly stronger -- full disconnection, not
+merely non-reachability in one specific rule's sense -- which some
+callers might want for other purposes), but it must never again be the
+ONLY normative admissibility witness, since it cannot certify every
+admissible instance the ancestry rule itself is supposed to accept.
 
 ## 11. Closed witness variants
 
@@ -522,18 +589,26 @@ factorisation witness).
 
 ### Instance schema: verdict-specific, inside one common envelope
 
-`L` is mathematically required for `EXACT`/`UNDERDETERMINED` but not
-for `OBSTRUCTED`'s own proof. Per this document's own recommendation
-(closed, verdict-specific instance schemas inside one common envelope,
-rather than one shared superset instance schema): the production
-schema should define `INSTANCE_KEYS` per verdict, analogous to `WITNESS
-_KEYS` per verdict, with `L` REQUIRED for `EXACT`/`UNDERDETERMINED` and
-FORBIDDEN (not merely optional/null) for `OBSTRUCTED`. The spike's own
-`INSTANCE_KEYS` is a single shared frozenset with `L` merely nullable
-for all four verdicts -- looser than this document's own
-recommendation. This is a third specification correction found by
-holding the spike to this document's own stated principle, not a claim
-that the spike already implements the stricter form.
+**Implemented (hardening pass, 2026-07-22).** An earlier draft of this
+document recommended, but did not implement, closed, verdict-specific
+instance schemas. This is now implemented and verified:
+
+    EXACT / UNDERDETERMINED required: D, r, L, provenance, policy, row_evidence_ids
+    OBSTRUCTED required:               D, r,    provenance, policy, row_evidence_ids
+    OBSTRUCTED optional:               claim_metadata
+    INADMISSIBLE required:                      provenance, policy, row_evidence_ids
+
+`D`/`r`/`L` are entirely FORBIDDEN (not merely absent or null) for
+`INADMISSIBLE` -- confirmed by a dedicated tamper test ("extra instance
+field (D) rejected under INADMISSIBLE"); `L` is forbidden for
+`OBSTRUCTED` (test: "extra instance field (L) rejected under
+OBSTRUCTED"); `claim_metadata` is forbidden for `EXACT`/
+`UNDERDETERMINED` (tests: "extra instance field (claim_metadata)
+rejected under EXACT"/"...under UNDERDETERMINED"). `provenance` and
+`policy` are each themselves closed sub-schemas (`PROVENANCE_KEYS =
+{vertices, edges}`, `POLICY_KEYS = {independent_pairs, policy_
+version}`), so an extra or missing field inside either is also
+rejected, not merely at the top level.
 
 ## 12. Verification API
 
@@ -567,7 +642,7 @@ already establish, reused here rather than reinvented).
 | Find `M`                            | permitted | forbidden |
 | Find separator `y`                  | permitted | forbidden |
 | Search provenance graph (path)      | permitted | forbidden |
-| Search provenance graph (labelling) | permitted | forbidden |
+| Search provenance graph (reachability cut) | permitted | forbidden |
 | Check `D u = r`                     | permitted |  required |
 | Check `M D = L`                     | permitted |  required |
 | Check `M r = x`                     | permitted |  required |
@@ -575,9 +650,9 @@ already establish, reused here rather than reinvented).
 | Check `L k != 0`                    | permitted |  required |
 | Check `y^T D = 0`                   | permitted |  required |
 | Check `y^T r != 0`                  | permitted |  required |
-| Validate supplied path edges (directed) | permitted |  required |
-| Validate supplied component labelling   | permitted |  required |
-| Recompute digests                   | permitted |  required |
+| Validate supplied path edges (directed, simple) | permitted |  required |
+| Validate supplied reachability cut (membership + closure) | permitted |  required |
+| Recompute digests (domain-separated)   | permitted |  required |
 
 Confirmed, not merely asserted: `grep -nE "^from|^import" verifier.py`
 lists only `dataclasses`, `fractions`, `typing`, `certificate_types`,
@@ -634,43 +709,53 @@ This is why SS10's `admissibility_witness` is REQUIRED, not optional,
 on `EXACT`/`UNDERDETERMINED`/`OBSTRUCTED` -- confirmed directly: the
 spike's own `WITNESS_REQUIRED_KEYS` includes `admissibility_witness`
 for all three, and `_verify_exact`/`_verify_underdetermined`/`_verify_
-obstructed` each call `_verify_admissibility_labelling` and return
-early (REJECT propagates) if it fails, BEFORE any of SS6-8's own
-algebraic checks run.
+obstructed` each call `_verify_admissibility_cuts` and return early
+(REJECT propagates) if it fails, BEFORE any of SS6-8's own algebraic
+checks run.
 
 ## 15. Tamper and threat model
 
 The spike's own successful test classes (all confirmed by running
-`pce_certificate_spike.py`, 23/23 as of this document):
+`pce_certificate_spike.py`, 35/35 as of this document):
 
 - witness mutation (a single entry of `u`, `M`, `k`, or `y`);
 - claimed-value mutation (`x`);
 - digest mismatch (residue mutated in `instance` after the certificate
   was built, so `input_digest` no longer matches);
+- provenance-edge mutation after digest creation (now caught by
+  `input_digest`, per SS4's corrected boundary);
 - path-edge mutation (a nonexistent node spliced into `ancestry_path`);
 - endpoint mutation (`ancestry_path`'s own endpoint no longer matching
   the declared `left_evidence`/`right_evidence`);
 - direction mutation (`direction` declared as the opposite of what the
   supplied path actually establishes);
+- repeated-vertex mutation (`ancestry_path` no longer a simple path);
 - policy mutation (the declared independent pair no longer matching the
   implicated evidence);
-- admissibility-labelling mutation (two declared-independent evidence
-  identifiers relabelled to share a component);
+- reachability-cut mutation (four distinct sub-cases, SS10: a direct
+  edge defeating a falsely claimed cut; a longer path defeating a
+  falsely claimed cut; a cut omitting the required vertex itself; a cut
+  improperly including the excluded endpoint);
+- swapped `input_digest`/`policy_digest` values;
+- extra, verdict-irrelevant instance fields (four sub-cases, one per
+  verdict, SS11);
 - cross-verdict substitution (5 cases, SS11);
 - missing and extra witness keys (structural, via `validate_closed_
-  keys` and the required-keys check).
+  keys` and the required-keys check);
+- domain-separation confirmation (identical canonical bytes hash
+  differently under the two digest domains -- a positive check, not a
+  rejection, but confirming the mechanism SS4 depends on).
 
 The production threat model additionally includes an untrusted
 generator attempting to: fabricate a witness (covered by the tamper
-classes above); substitute another instance or another policy
-(digest mismatch, once SS4's `provenance`-in-`policy_digest` correction
-is implemented); relabel the verdict (cross-verdict substitution);
-exploit parsing ambiguity (non-canonical rational strings, duplicate
-JSON keys -- both already rejected by the inherited `r21_certificate_
-format` primitives this document reuses); exploit malformed dimensions
-(ragged matrices, mismatched row/column counts -- rejected by `parse_
-matrix`/explicit length checks); cause verifier resource exhaustion
-(SS16).
+classes above); substitute another instance or another policy (digest
+mismatch, per SS4's now-implemented boundary); relabel the verdict
+(cross-verdict substitution); exploit parsing ambiguity (non-canonical
+rational strings, duplicate JSON keys -- both already rejected by the
+inherited `r21_certificate_format` primitives this document reuses);
+exploit malformed dimensions (ragged matrices, mismatched row/column
+counts -- rejected by `parse_matrix`/explicit length checks); cause
+verifier resource exhaustion (SS16).
 
 ## 16. Resource limits
 
@@ -695,25 +780,30 @@ CHARS`, `MAX_INPUT_BYTES`), reused directly rather than reinvented:
   range(len(path) - 1)`, `for e in edges`), never recursive descent
   over attacker-controlled depth.
 
-The provenance path itself should be REQUIRED to be a simple path (no
-repeated vertices) -- confirmed a defined, sensible restriction, since
-a supplied ancestry path never needs a cycle to establish an ancestry
-relation, and disallowing repeats bounds path length by the graph's own
-node count for free. This is a specification requirement the spike does
-not currently enforce (its own `_verify_inadmissible` does not check
-for repeated vertices in `ancestry_path`) -- a fourth specification
-correction found by writing this section, not a claim the spike already
-checks it.
+**Implemented (hardening pass, 2026-07-22).** The provenance path is
+now REQUIRED to be a simple path (no repeated vertices) -- confirmed
+directly: `verifier._verify_inadmissible` rejects `ancestry_path` if
+`len(set(path)) != len(path)`, and the "repeated vertex in ancestry_
+path (not a simple path)" tamper test confirms a path revisiting an
+already-used vertex is rejected. A supplied ancestry path never needs a
+cycle to establish an ancestry relation, and disallowing repeats bounds
+path length by the graph's own vertex count for free.
 
 ## 17. Spike traceability (non-normative)
 
 Recorded here for provenance, not as production code:
 
-- 23/23 spike checks passed (`spike_certificates/pce_certificate_
-  spike.py`'s own final summary);
-- four valid certificates accepted, one per verdict;
-- 14 tamper cases rejected (3 each for `EXACT`/`UNDERDETERMINED`/
-  `OBSTRUCTED`, 4 for `INADMISSIBLE`, 1 admissibility-labelling);
+- 35/35 spike checks passed (`spike_certificates/pce_certificate_
+  spike.py`'s own final summary, up from 21/21 after the first
+  certificate-feasibility pass and 23/23 after this document's own
+  first draft);
+- five valid certificates accepted: one per verdict, plus the NEW
+  `exact_common_ancestor` case (`a <- c -> b`, identical algebra to
+  `exact.json`, accepted as `EXACT` despite `row-a`/`row-b` sharing a
+  weakly connected component -- the completeness gap SS10 closes);
+- a domain-separation confirmation (identical canonical bytes hash
+  differently under the two digest domains);
+- 22 tamper cases rejected (SS15's full list);
 - 5 cross-verdict substitutions rejected;
 - no solver, nullspace, or graph-search dependency in the verifier,
   confirmed by direct `grep` of its own imports, not merely its
@@ -721,25 +811,32 @@ Recorded here for provenance, not as production code:
 - the exact factorisation witness `M = [[1, 1]]` for the chain example
   (`D = [[-1,1,0],[0,-1,1]]`, `L = [-1,0,1]`), confirmed to satisfy
   both `M D = L` and `M r = L u = (5)`;
-- the initial provenance rule implemented and then RENAMED during this
-  document's own drafting, from `independent_rows_no_shared_ancestry`
-  to `independent_rows_no_ancestry_relation`, with an added `direction`
-  field and directed (not undirected) edge checking -- the naming
-  correction that opened this document's own commit sequence;
+- the initial provenance rule implemented and then RENAMED, from
+  `independent_rows_no_shared_ancestry` to `independent_rows_no_
+  ancestry_relation`, with an added `direction` field and directed
+  (not undirected) edge checking;
+- the admissibility witness implemented, found INCOMPLETE (component
+  labelling), and REPLACED with reachability cuts -- SS10's own
+  correction, made before any production code was written from the
+  incomplete version;
+- the provenance-digest boundary implemented, found WRONG in this
+  document's own first draft (folding provenance into `policy_digest`),
+  and CORRECTED to bind provenance under `input_digest` instead -- SS4's
+  own correction;
 - the fact that `spike/` and `spike_certificates/` both remain
   untracked as of this document.
 
-This document also records four specification-level corrections found
-by auditing the spike against its own stated principles, none of which
-the spike itself currently implements (each flagged in place above,
-SS4, SS4, SS11, SS16 respectively): `policy_digest` must bind
-`provenance` as well as `policy`; both digest functions need explicit
-domain-separation prefixes; instance schemas should be verdict-specific
-(closed), not one shared superset; and `ancestry_path` should be
-required to be a simple path. These are documented as PRODUCTION
-requirements this specification adds, not claims about what the
-untracked spike already does -- the distinction this document, and the
-one before it, both insist on throughout.
+This document records two architectural corrections made to its own
+FIRST DRAFT before any production code was written from it (SS4's
+digest-boundary reversal, SS10's labelling-to-cuts replacement), plus
+confirmation that two other corrections flagged as pending in that
+first draft (verdict-specific closed instance schemas, SS11; the
+simple-path requirement, SS16) are now implemented and verified. None
+of these five corrections was accepted as "close enough" once a
+concrete counterexample or a concrete implementation gap was found --
+each was either fixed in the spike and re-verified, or (for the two
+genuinely new architectural corrections) fixed in this document AND
+the spike together, in the same pass.
 
 The executable spike is not preserved as production code merely to
 keep this evidence; this document records the observed result, and the
