@@ -1,12 +1,22 @@
 # Proof-Carrying Exactness
 
-**Status: architecture and specification only. No implementation yet.**
-See [`docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md`](docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md)
-for the full, unreviewed founding proposal, and
+**Status: a pure certificate verifier exists. No generator, CLI, or
+end-to-end product yet.** See
+[`docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md`](docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md)
+for the full, unreviewed founding proposal;
 [`docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md`](docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md)
-for the first architectural specification, derived from a successful
-untracked spike. No `pce_*` production module, certificate schema, or
-independent verifier exists yet.
+for the semantic specification (the `EXACT`/`UNDERDETERMINED`/
+`OBSTRUCTED`/`INADMISSIBLE` distinction); and
+[`docs/design/PROOF_CARRYING_EXACTNESS_CERTIFICATE_SPEC.md`](docs/design/PROOF_CARRYING_EXACTNESS_CERTIFICATE_SPEC.md)
+for the certificate boundary the `proof_carrying_exactness/` package
+below implements.
+
+The `proof_carrying_exactness/` package is a pure VERIFIER only: it
+checks an already-produced certificate and never produces one. There is
+no certificate generator, no command-line assessment tool (no
+`pce-assess`), no tracking/sensor-fusion adapter, and no end-to-end
+demonstration in this repository yet -- those remain future work,
+tracked in the design documents above, not implemented here.
 
 ## What this repository is
 
@@ -38,23 +48,38 @@ different project's own identity and release history.
 
 ## What exists here right now
 
+- `proof_carrying_exactness/`: the production certificate VERIFIER --
+  `verify_certificate_bytes(data: bytes) -> VerificationResult`. Checks
+  all four verdicts (`EXACT`, `UNDERDETERMINED`, `OBSTRUCTED`,
+  `INADMISSIBLE`) against the closed schemas and digest boundary
+  `docs/design/PROOF_CARRYING_EXACTNESS_CERTIFICATE_SPEC.md` defines,
+  with no discovery/search dependency of its own (mechanically checked
+  by `tests/test_pce_import_boundary.py`). See
+  `docs/PCE_VERIFIER_TRACEABILITY.md` for the full mapping from
+  specification requirements to tests.
 - `rocq/`, `ocaml/`: the inherited proof and certificate-checking
   infrastructure, unmodified.
-- Root-level `.py` files: the inherited R1-R24 diagnostic, refinement-
-  witness, R21 certificate, and tracking-adapter/Stone-Soup Python
-  modules, unmodified.
+- Root-level `.py` files (excluding `proof_carrying_exactness/`): the
+  inherited R1-R24 diagnostic, refinement-witness, R21 certificate, and
+  tracking-adapter/Stone-Soup Python modules, unmodified -- reference
+  material this project's own verifier reuses primitives from, not a
+  finished part of this project's own applied layer.
 - `docs/`: the inherited design documents for that existing work, plus
-  this project's own founding proposal
-  (`docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md`).
-- `examples/`, `tests/`: the inherited fixtures and test suite for the
-  above, unmodified.
+  this project's own founding proposal and both specifications above.
+- `examples/`, `tests/`: the inherited fixtures and test suite,
+  unmodified, plus this project's own `tests/test_pce_*.py` production
+  test suite and `tests/test_inherited_foundation_inventory.py` (an
+  inventory check over the inherited Rocq foundation and upstream
+  provenance record, replacing an earlier test that encoded
+  `regional-obstruction-calculus`'s own documentation identity rather
+  than this repository's).
 
-None of this yet reflects a proof-carrying-exactness-specific design.
-The `EXACT`/`OBSTRUCTED`/`INADMISSIBLE` verdict system, the unified
-certificate schema, the obstruction-capable demonstrator, and the
-formal Rocq objects the proposal describes (`AdmissibilityPolicy`,
-`RegionalEvidenceState`, `ExactnessJudgement`, and so on) do not exist
-yet.
+Not yet built: no certificate GENERATOR (something that discovers a
+witness and produces a certificate for the verifier to check) exists;
+no command-line assessment tool exists; no tracking/sensor-fusion
+adapter or demonstrator exists; and the formal Rocq objects the
+proposal describes (`AdmissibilityPolicy`, `RegionalEvidenceState`,
+`ExactnessJudgement`, and so on) do not exist either.
 
 ## Licence
 
