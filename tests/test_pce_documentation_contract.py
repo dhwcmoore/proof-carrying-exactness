@@ -19,6 +19,8 @@ ASSESS_TRACEABILITY = REPO_ROOT / "docs" / "PCE_ASSESS_TRACEABILITY.md"
 GENERATOR_PACKAGE_DIR = REPO_ROOT / "proof_carrying_exactness_generator"
 ASSESS_PACKAGE_DIR = REPO_ROOT / "proof_carrying_exactness_assess"
 ASSESS_CLI_LAUNCHER = REPO_ROOT / "pce_assess.py"
+DEMONSTRATION_DOC = REPO_ROOT / "docs" / "PCE_END_TO_END_DEMONSTRATION.md"
+DEMONSTRATION_EXAMPLES_DIR = REPO_ROOT / "examples" / "pce_assess"
 
 
 def _read(path: Path) -> str:
@@ -71,6 +73,19 @@ def test_every_test_path_named_in_the_generator_traceability_manifest_exists():
 
 def test_every_test_path_named_in_the_assess_traceability_manifest_exists():
     _assert_all_named_test_files_exist(ASSESS_TRACEABILITY)
+
+
+def test_demonstration_doc_exists():
+    assert DEMONSTRATION_DOC.exists()
+
+
+def test_every_test_path_named_in_the_demonstration_doc_exists():
+    _assert_all_named_test_files_exist(DEMONSTRATION_DOC)
+
+
+def test_demonstration_examples_exist_for_all_four_verdicts():
+    for verdict in ("exact", "underdetermined", "obstructed", "inadmissible"):
+        assert (DEMONSTRATION_EXAMPLES_DIR / f"{verdict}.json").exists()
 
 
 def test_readme_describes_all_four_verdicts():
@@ -141,4 +156,15 @@ def test_readme_identifies_the_assess_package_and_cli():
     )
     assert "pce_assess.py" in text or "pce-assess" in text, (
         "README.md does not name the pce-assess CLI"
+    )
+
+
+def test_readme_identifies_the_end_to_end_demonstration():
+    # The generic four-verdict demonstration now exists -- this claim
+    # must be POSITIVE. It must be distinguished from a demonstration
+    # over REAL regional evidence, which still does not exist (see
+    # test_readme_does_not_announce_an_unbuilt_adapter_or_demonstration).
+    text = _read(README)
+    assert "PCE_END_TO_END_DEMONSTRATION.md" in text, (
+        "README.md does not mention docs/PCE_END_TO_END_DEMONSTRATION.md"
     )

@@ -1,0 +1,8 @@
+{
+  "row_evidence_ids": {"0": "row-0", "1": "row-1"},
+  "provenance": {
+    "vertices": ["row-0", "row-1", "derived-intermediate"],
+    "edges": [["row-1", "derived-intermediate"], ["derived-intermediate", "row-0"]]
+  },
+  "policy": {"independent_pairs": [["row-0", "row-1"]], "policy_version": "pce-policy/v1"}
+}

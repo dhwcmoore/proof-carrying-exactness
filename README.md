@@ -30,10 +30,14 @@ render only what the verified certificate proves -- exposed as both
 `assess_instance(instance_bytes: bytes) -> AssessmentResult` and the
 small `pce-assess` CLI (`python3 pce_assess.py instance.json
 --certificate-out verdict.json`). It carries no region-specific
-semantics of its own. There is still no region-native adapter, no
-tracking/sensor-fusion adapter, and no end-to-end demonstration in this
-repository yet -- those remain future work, tracked in the design
-documents above, not implemented here.
+semantics of its own. `docs/PCE_END_TO_END_DEMONSTRATION.md` records a
+reproducible, fresh-clone run of all four verdicts through this generic
+pipeline, including a tampered-certificate rejection and a simulated
+malicious-generator rejection. There is still no region-native adapter
+and no tracking/sensor-fusion adapter -- no demonstration over real
+regional evidence exists yet, only the generic affine-rational one
+above -- those remain future work, tracked in the design documents
+above, not implemented here.
 
 ## What this repository is
 
@@ -112,11 +116,13 @@ different project's own identity and release history.
   this project's own founding proposal and both specifications above.
 - `examples/`, `tests/`: the inherited fixtures and test suite,
   unmodified, plus this project's own `tests/test_pce_*.py` production
-  test suite and `tests/test_inherited_foundation_inventory.py` (an
+  test suite, `tests/test_inherited_foundation_inventory.py` (an
   inventory check over the inherited Rocq foundation and upstream
   provenance record, replacing an earlier test that encoded
   `regional-obstruction-calculus`'s own documentation identity rather
-  than this repository's).
+  than this repository's), and `examples/pce_assess/` (the four
+  instance fixtures `docs/PCE_END_TO_END_DEMONSTRATION.md` and
+  `tests/test_pce_assess_demonstration.py` both exercise).
 
 Not yet built: no region-native adapter and no tracking/sensor-fusion
 adapter exist; no end-to-end demonstration over real regional evidence

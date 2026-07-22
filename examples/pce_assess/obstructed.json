@@ -1,0 +1,8 @@
+{
+  "D": [["-1", "1", "0", "0"], ["0", "-1", "1", "0"], ["0", "0", "-1", "1"], ["-1", "0", "0", "1"]],
+  "r": ["1", "1", "1", "-2"],
+  "claim_metadata": "global coherent assignment of four regional values",
+  "row_evidence_ids": {"0": "edge-e12", "1": "edge-e23", "2": "edge-e34", "3": "edge-e14"},
+  "provenance": {"vertices": ["edge-e12", "edge-e23", "edge-e34", "edge-e14"], "edges": []},
+  "policy": {"independent_pairs": [], "policy_version": "pce-policy/v1"}
+}

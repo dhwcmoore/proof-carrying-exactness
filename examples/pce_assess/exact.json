@@ -1,0 +1,8 @@
+{
+  "D": [["-1", "1", "0"], ["0", "-1", "1"]],
+  "r": ["3", "2"],
+  "L": [["-1", "0", "1"]],
+  "row_evidence_ids": {"0": "row-0", "1": "row-1"},
+  "provenance": {"vertices": ["row-0", "row-1"], "edges": []},
+  "policy": {"independent_pairs": [["row-0", "row-1"]], "policy_version": "pce-policy/v1"}
+}
