@@ -1,7 +1,8 @@
 # Proof-Carrying Exactness
 
-**Status: a pure certificate verifier exists. No generator, CLI, or
-end-to-end product yet.** See
+**Status: a pure certificate verifier exists, and an untrusted
+four-verdict certificate generator now exists alongside it as a
+library API.** See
 [`docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md`](docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md)
 for the full, unreviewed founding proposal;
 [`docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md`](docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md)
@@ -12,11 +13,19 @@ for the certificate boundary the `proof_carrying_exactness/` package
 below implements.
 
 The `proof_carrying_exactness/` package is a pure VERIFIER only: it
-checks an already-produced certificate and never produces one. There is
-no certificate generator, no command-line assessment tool (no
-`pce-assess`), no tracking/sensor-fusion adapter, and no end-to-end
-demonstration in this repository yet -- those remain future work,
-tracked in the design documents above, not implemented here.
+checks an already-produced certificate and never produces one.
+`proof_carrying_exactness_generator/` is a separate, UNTRUSTED package
+that discovers a witness for all four verdicts -- solving, searching,
+and factorising freely, none of which the verifier is permitted to do
+-- but it sits entirely outside the trusted computing base:
+`generate_certificate` releases certificate bytes only after
+independently resubmitting them to `proof_carrying_exactness.verify_
+certificate_bytes` and confirming ACCEPT, raising an exception and
+releasing nothing otherwise. There is still no command-line assessment
+tool (no `pce-assess`), no region-native adapter, no
+tracking/sensor-fusion adapter, and no end-to-end demonstration in this
+repository yet -- those remain future work, tracked in the design
+documents above, not implemented here.
 
 ## What this repository is
 
@@ -57,6 +66,19 @@ different project's own identity and release history.
   by `tests/test_pce_import_boundary.py`). See
   `docs/PCE_VERIFIER_TRACEABILITY.md` for the full mapping from
   specification requirements to tests.
+- `proof_carrying_exactness_generator/`: an UNTRUSTED four-verdict
+  certificate GENERATOR --
+  `generate_certificate(instance: Mapping[str, object]) -> bytes`. Free
+  to solve, search, and factorise (unlike the verifier), for the affine
+  rational class the certificate spec currently covers. It sits outside
+  the trusted computing base: it never returns certificate bytes the
+  production verifier has not independently accepted first, raising
+  `CertificateGenerationFailed` (releasing nothing) if verification
+  fails. No command-line tool wraps it yet. See
+  `docs/PCE_GENERATOR_TRACEABILITY.md` for the full mapping from
+  generator obligations to tests, and `tests/test_generator_import_
+  boundary.py` for the mechanical proof that the verifier never
+  imports it back.
 - `rocq/`, `ocaml/`: the inherited proof and certificate-checking
   infrastructure, unmodified.
 - Root-level `.py` files (excluding `proof_carrying_exactness/`): the
@@ -74,10 +96,9 @@ different project's own identity and release history.
   `regional-obstruction-calculus`'s own documentation identity rather
   than this repository's).
 
-Not yet built: no certificate GENERATOR (something that discovers a
-witness and produces a certificate for the verifier to check) exists;
-no command-line assessment tool exists; no tracking/sensor-fusion
-adapter or demonstrator exists; and the formal Rocq objects the
+Not yet built: no command-line assessment tool exists; no
+region-native adapter, no tracking/sensor-fusion adapter, and no
+end-to-end demonstration exist yet; and the formal Rocq objects the
 proposal describes (`AdmissibilityPolicy`, `RegionalEvidenceState`,
 `ExactnessJudgement`, and so on) do not exist either.
 
