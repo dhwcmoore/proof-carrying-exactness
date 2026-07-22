@@ -15,7 +15,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 README = REPO_ROOT / "README.md"
 TRACEABILITY = REPO_ROOT / "docs" / "PCE_VERIFIER_TRACEABILITY.md"
 GENERATOR_TRACEABILITY = REPO_ROOT / "docs" / "PCE_GENERATOR_TRACEABILITY.md"
+ASSESS_TRACEABILITY = REPO_ROOT / "docs" / "PCE_ASSESS_TRACEABILITY.md"
 GENERATOR_PACKAGE_DIR = REPO_ROOT / "proof_carrying_exactness_generator"
+ASSESS_PACKAGE_DIR = REPO_ROOT / "proof_carrying_exactness_assess"
+ASSESS_CLI_LAUNCHER = REPO_ROOT / "pce_assess.py"
 
 
 def _read(path: Path) -> str:
@@ -43,6 +46,10 @@ def test_generator_traceability_manifest_exists():
     assert GENERATOR_TRACEABILITY.exists()
 
 
+def test_assess_traceability_manifest_exists():
+    assert ASSESS_TRACEABILITY.exists()
+
+
 def _assert_all_named_test_files_exist(manifest: Path) -> None:
     text = _read(manifest)
     # Matches `test_pce_whatever.py` (with or without a `::test_name`
@@ -62,34 +69,31 @@ def test_every_test_path_named_in_the_generator_traceability_manifest_exists():
     _assert_all_named_test_files_exist(GENERATOR_TRACEABILITY)
 
 
+def test_every_test_path_named_in_the_assess_traceability_manifest_exists():
+    _assert_all_named_test_files_exist(ASSESS_TRACEABILITY)
+
+
 def test_readme_describes_all_four_verdicts():
     text = _read(README)
     for verdict in ("EXACT", "UNDERDETERMINED", "OBSTRUCTED", "INADMISSIBLE"):
         assert verdict in text, f"README.md does not mention the {verdict!r} verdict"
 
 
-def test_readme_does_not_announce_an_unbuilt_cli_or_adapter():
+def test_readme_does_not_announce_an_unbuilt_adapter_or_demonstration():
     # These specific phrases must not appear as though describing
-    # something ALREADY BUILT (e.g. "pce-assess accepts...", "the
-    # tracking adapter integrates..."). Checked over the whole document
-    # with a nearby-negation window (not line-by-line, since markdown
+    # something ALREADY BUILT (e.g. "the tracking adapter
+    # integrates..."). Checked over the whole document with a
+    # nearby-negation window (not line-by-line, since markdown
     # soft-wraps a sentence's negation onto a different line than the
     # phrase it negates) -- the README's own current wording only ever
-    # uses these phrases negatively ("no pce-assess", "not yet built: ...
-    # a command-line assessment tool"); this test guards against that
+    # uses these phrases negatively; this test guards against that
     # flipping to an affirmative claim without a corresponding
-    # implementation commit. (The generator itself is now built and
-    # deliberately NOT in this list -- see test_generator_package_exists
-    # and test_readme_identifies_the_generator_package_as_untrusted.)
+    # implementation commit. (The generator and the generic assess
+    # CLI are now built and deliberately NOT in this list -- see
+    # test_generator_package_exists and test_assess_package_and_cli_exist.)
     text = _read(README)
     negations = ("no ", "not yet", "not built", "does not")
-    for phrase in (
-        "pce-assess",
-        "command-line assessment tool",
-        "region-native adapter",
-        "tracking/sensor-fusion adapter",
-        "end-to-end demonstration",
-    ):
+    for phrase in ("region-native adapter", "tracking/sensor-fusion adapter", "end-to-end demonstration"):
         for match in re.finditer(re.escape(phrase), text):
             window = text[max(0, match.start() - 80):match.start()].lower()
             assert any(neg in window for neg in negations), (
@@ -104,7 +108,7 @@ def test_generator_package_exists():
 
 
 def test_readme_identifies_the_generator_package_as_untrusted():
-    # The generator now exists -- unlike the CLI/adapter/demonstrator,
+    # The generator now exists -- unlike the adapter/demonstrator,
     # this claim must be POSITIVE, not negated. It must name the actual
     # package and describe it as untrusted/outside the trusted
     # computing base, not merely mention the word "generator" in
@@ -117,4 +121,24 @@ def test_readme_identifies_the_generator_package_as_untrusted():
     assert "untrusted" in lowered or "trusted computing base" in lowered, (
         "README.md mentions the generator package but never describes it as untrusted "
         "or outside the trusted computing base"
+    )
+
+
+def test_assess_package_and_cli_exist():
+    assert ASSESS_PACKAGE_DIR.is_dir()
+    assert (ASSESS_PACKAGE_DIR / "__init__.py").exists()
+    assert ASSESS_CLI_LAUNCHER.exists()
+
+
+def test_readme_identifies_the_assess_package_and_cli():
+    # The end-to-end assess pipeline now exists -- this claim must be
+    # POSITIVE, not negated. It must name the actual package, the CLI
+    # invocation, and confirm the README does not claim it carries
+    # region-specific semantics (that remains future work).
+    text = _read(README)
+    assert "proof_carrying_exactness_assess" in text, (
+        "README.md does not mention the proof_carrying_exactness_assess package"
+    )
+    assert "pce_assess.py" in text or "pce-assess" in text, (
+        "README.md does not name the pce-assess CLI"
     )

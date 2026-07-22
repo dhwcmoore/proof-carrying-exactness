@@ -1,8 +1,9 @@
 # Proof-Carrying Exactness
 
-**Status: a pure certificate verifier exists, and an untrusted
-four-verdict certificate generator now exists alongside it as a
-library API.** See
+**Status: a pure certificate verifier exists, an untrusted four-verdict
+certificate generator exists alongside it as a library API, and a
+generic end-to-end assessment interface (library function and CLI)
+now composes the two.** See
 [`docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md`](docs/design/PROOF_CARRYING_EXACTNESS_PROPOSAL.md)
 for the full, unreviewed founding proposal;
 [`docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md`](docs/design/PROOF_CARRYING_EXACTNESS_SPEC.md)
@@ -21,8 +22,15 @@ and factorising freely, none of which the verifier is permitted to do
 `generate_certificate` releases certificate bytes only after
 independently resubmitting them to `proof_carrying_exactness.verify_
 certificate_bytes` and confirming ACCEPT, raising an exception and
-releasing nothing otherwise. There is still no command-line assessment
-tool (no `pce-assess`), no region-native adapter, no
+releasing nothing otherwise. `proof_carrying_exactness_assess/`
+composes both packages into one generic pipeline -- parse and validate
+an instance, generate a certificate, independently verify it AGAIN at
+this layer (never merely trusting that the generator already did), and
+render only what the verified certificate proves -- exposed as both
+`assess_instance(instance_bytes: bytes) -> AssessmentResult` and the
+small `pce-assess` CLI (`python3 pce_assess.py instance.json
+--certificate-out verdict.json`). It carries no region-specific
+semantics of its own. There is still no region-native adapter, no
 tracking/sensor-fusion adapter, and no end-to-end demonstration in this
 repository yet -- those remain future work, tracked in the design
 documents above, not implemented here.
@@ -74,18 +82,32 @@ different project's own identity and release history.
   the trusted computing base: it never returns certificate bytes the
   production verifier has not independently accepted first, raising
   `CertificateGenerationFailed` (releasing nothing) if verification
-  fails. No command-line tool wraps it yet. See
-  `docs/PCE_GENERATOR_TRACEABILITY.md` for the full mapping from
-  generator obligations to tests, and `tests/test_generator_import_
+  fails. See `docs/PCE_GENERATOR_TRACEABILITY.md` for the full mapping
+  from generator obligations to tests, and `tests/test_generator_import_
   boundary.py` for the mechanical proof that the verifier never
   imports it back.
+- `proof_carrying_exactness_assess/` (launched via the root-level
+  `pce_assess.py`): the generic, region-agnostic end-to-end assessment
+  boundary -- `assess_instance(instance_bytes: bytes) ->
+  AssessmentResult` and the small `pce-assess` CLI (`python3
+  pce_assess.py instance.json --certificate-out verdict.json`). Parses
+  and shallowly validates the instance, calls the generator, calls the
+  production verifier a SECOND time itself (never merely trusting the
+  generator's own internal gate), and renders only what the verified
+  certificate proves. Fails closed with a distinct exit code for a
+  malformed instance, a generation failure, a verifier rejection, or an
+  unwritable certificate output path; never writes a certificate file
+  except after ACCEPT. No region-specific semantics live here yet. See
+  `docs/PCE_ASSESS_TRACEABILITY.md` for the full mapping from this
+  layer's obligations to tests.
 - `rocq/`, `ocaml/`: the inherited proof and certificate-checking
   infrastructure, unmodified.
-- Root-level `.py` files (excluding `proof_carrying_exactness/`): the
-  inherited R1-R24 diagnostic, refinement-witness, R21 certificate, and
-  tracking-adapter/Stone-Soup Python modules, unmodified -- reference
-  material this project's own verifier reuses primitives from, not a
-  finished part of this project's own applied layer.
+- Root-level `.py` files, excluding `pce_assess.py` (this project's own
+  CLI launcher, above): the inherited R1-R24 diagnostic, refinement-
+  witness, R21 certificate, and tracking-adapter/Stone-Soup Python
+  modules, unmodified -- reference material this project's own
+  verifier and generator reuse primitives from, not a finished part of
+  this project's own applied layer.
 - `docs/`: the inherited design documents for that existing work, plus
   this project's own founding proposal and both specifications above.
 - `examples/`, `tests/`: the inherited fixtures and test suite,
@@ -96,11 +118,12 @@ different project's own identity and release history.
   `regional-obstruction-calculus`'s own documentation identity rather
   than this repository's).
 
-Not yet built: no command-line assessment tool exists; no
-region-native adapter, no tracking/sensor-fusion adapter, and no
-end-to-end demonstration exist yet; and the formal Rocq objects the
-proposal describes (`AdmissibilityPolicy`, `RegionalEvidenceState`,
-`ExactnessJudgement`, and so on) do not exist either.
+Not yet built: no region-native adapter and no tracking/sensor-fusion
+adapter exist; no end-to-end demonstration over real regional evidence
+exists yet (only the generic affine-rational pipeline above); and the
+formal Rocq objects the proposal describes (`AdmissibilityPolicy`,
+`RegionalEvidenceState`, `ExactnessJudgement`, and so on) do not exist
+either.
 
 ## Licence
 
